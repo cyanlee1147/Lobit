@@ -19,7 +19,7 @@ if (!configured || !window.supabase) {
 }
 async function request(query) { const result=await query; if(result.error) throw result.error; return result.data; }
 async function setSession(next) {
-  if (user?.id === next?.id) return;
+  if (user && next && user.id === next.id) return;
   user=next;
   $('#auth').classList.toggle('hidden',!!user);
   $('#privateApp').classList.toggle('hidden',!user);
