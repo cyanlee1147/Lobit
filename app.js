@@ -8,6 +8,7 @@ const credentials = window.LOBIT_CONFIG || {};
 const configured = /^https:\/\/[\w-]+\.supabase\.co$/.test(credentials.url || '') && !!credentials.publishableKey && !credentials.publishableKey.includes('YOUR_');
 let db, user, rabbits=[];
 if (!configured || !window.supabase) {
+  $('#auth').classList.add('hidden');
   $('#setup').classList.remove('hidden');
 } else {
   db = window.supabase.createClient(credentials.url, credentials.publishableKey);
