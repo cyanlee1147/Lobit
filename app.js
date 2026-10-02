@@ -7,8 +7,14 @@ const say = (message, error=false) => { $('#message').textContent=message; $('#m
 const credentials = window.LOBIT_CONFIG || {};
 const configured = /^https:\/\/[\w-]+\.supabase\.co$/.test(credentials.url || '') && !!credentials.publishableKey && !credentials.publishableKey.includes('YOUR_');
 let db, user, rabbits=[];
+const openLogin = () => $('#loginModal').classList.add('open');
+const closeLogin = () => $('#loginModal').classList.remove('open');
+document.addEventListener('click', (event) => { if (event.target.closest('[data-login]')) openLogin(); });
+$('#closeLogin').addEventListener('click', closeLogin);
+$('#loginModal').addEventListener('click', (event) => { if (event.target.id === 'loginModal') closeLogin(); });
 if (!configured || !window.supabase) {
-  $('#auth').classList.add('hidden');
+  $('#loginBtn').classList.add('hidden');
+  $('#mainApp').classList.add('hidden');
   $('#setup').classList.remove('hidden');
 } else {
   db = window.supabase.createClient(credentials.url, credentials.publishableKey);
@@ -16,16 +22,25 @@ if (!configured || !window.supabase) {
     if(event==='PASSWORD_RECOVERY') $('#recover').classList.remove('hidden');
     void setSession(session?.user || null);
   });
-  db.auth.getUser().then(({data}) => setSession(data.user)).catch((e) => say(e.message,true));
+  db.auth.getSession().then(({data}) => setSession(data.session?.user || null)).catch((e) => say(e.message,true));
 }
+$('#googleLogin').addEventListener('click', async () => {
+  try { await request(db.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}})); }
+  catch(e) { say('Google 登入失敗：'+e.message,true); }
+});
 async function request(query) { const result=await query; if(result.error) throw result.error; return result.data; }
-async function setSession(next) {
-  if (user && next && user.id === next.id) return;
-  user=next;
-  $('#auth').classList.toggle('hidden',!!user);
-  $('#privateApp').classList.toggle('hidden',!user);
+let loaded=false;
+async function setSession(next, force=false) {
+  if (!force && loaded && (user?.id||null) === (next?.id||null)) return;
+  loaded=true; user=next;
+  document.querySelectorAll('.guest-only').forEach(el=>el.classList.toggle('hidden',!!user));
+  document.querySelectorAll('.member-only').forEach(el=>el.classList.toggle('hidden',!user));
+  $('#loginBtn').classList.toggle('hidden',!!user);
   $('#logout').classList.toggle('hidden',!user);
-  if (!user) { rabbits=[]; return; }
+  $('#who').classList.toggle('hidden',!user);
+  $('#who').textContent=user?.email||'';
+  if (user) closeLogin();
+  if (!user) { rabbits=[]; try { await refreshPosts(); } catch(e) { say('讀取討論失敗：'+e.message,true); } return; }
   try { await ensureProfile(); await refreshRabbits(); await Promise.all([refreshPosts(),refreshReminders(),refreshMedical()]); }
   catch(e) { say('讀取資料失敗：'+e.message,true); }
 }
@@ -110,10 +125,10 @@ async function refreshPosts(){
   const [posts,comments,profiles]=await Promise.all([
     request(db.from('posts').select('*').order('created_at',{ascending:false}).limit(50)),
     request(db.from('comments').select('*').order('created_at',{ascending:true}).limit(500)),
-    request(db.from('profiles').select('id,nickname'))
+    user?request(db.from('profiles').select('id,nickname')):Promise.resolve([])
   ]);
   const names=new Map(profiles.map(p=>[p.id,p.nickname]));
-  entry('#postList','大家的討論',posts,p=>`<article class="item"><span class="pill">${esc(p.category)}</span> <strong>${esc(names.get(p.author_id)||'兔友')}</strong> <span class="muted">${esc(when(p.created_at))}</span><p>${esc(p.content)}</p>${p.author_id===user.id?`<button class="danger small" data-delete="posts" data-id="${p.id}">刪除發文</button>`:''}<div>${comments.filter(c=>c.post_id===p.id).map(c=>`<p class="muted">↳ <b>${esc(names.get(c.author_id)||'兔友')}</b>：${esc(c.content)}</p>`).join('')}</div><form class="commentForm" data-post="${p.id}"><input name="content" maxlength="1000" placeholder="回覆問題" required><button class="secondary">送出回覆</button></form></article>`);
+  entry('#postList','大家的討論',posts,p=>`<article class="item"><span class="pill">${esc(p.category)}</span> <strong>${esc(names.get(p.author_id)||'兔友')}</strong> <span class="muted">${esc(when(p.created_at))}</span><p>${esc(p.content)}</p>${p.author_id===user?.id?`<button class="danger small" data-delete="posts" data-id="${p.id}">刪除發文</button>`:''}<div>${comments.filter(c=>c.post_id===p.id).map(c=>`<p class="muted">↳ <b>${esc(names.get(c.author_id)||'兔友')}</b>：${esc(c.content)}</p>`).join('')}</div>${user?`<form class="commentForm" data-post="${p.id}"><input name="content" maxlength="1000" placeholder="回覆問題" required><button class="secondary">送出回覆</button></form>`:'<button class="secondary small" data-login>登入後回覆</button>'}</article>`);
 }
 $('#postForm').addEventListener('submit',async(e)=>{
   e.preventDefault();const f=e.currentTarget,d=new FormData(f);

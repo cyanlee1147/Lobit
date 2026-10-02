@@ -1,4 +1,4 @@
--- Run in Supabase SQL Editor. User records are private; community posts are public.
+-- Run in Supabase SQL Editor. User records are private; community posts and comments are readable by guests.
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   nickname text not null check (char_length(nickname) between 1 and 40),
@@ -81,9 +81,9 @@ create policy "rabbits own" on public.rabbits for all to authenticated using (ow
 create policy "care own" on public.care_entries for all to authenticated using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
 create policy "reminders own" on public.reminders for all to authenticated using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
 create policy "medical own" on public.medical_records for all to authenticated using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
-create policy "posts read" on public.posts for select to authenticated using (true);
+create policy "posts read" on public.posts for select to anon, authenticated using (true);
 create policy "posts insert self" on public.posts for insert to authenticated with check (author_id = (select auth.uid()));
 create policy "posts delete self" on public.posts for delete to authenticated using (author_id = (select auth.uid()));
-create policy "comments read" on public.comments for select to authenticated using (true);
+create policy "comments read" on public.comments for select to anon, authenticated using (true);
 create policy "comments insert self" on public.comments for insert to authenticated with check (author_id = (select auth.uid()));
 create policy "comments delete self" on public.comments for delete to authenticated using (author_id = (select auth.uid()));
