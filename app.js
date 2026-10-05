@@ -38,16 +38,39 @@ async function setSession(next, force=false) {
   $('#loginBtn').classList.toggle('hidden',!!user);
   $('#logout').classList.toggle('hidden',!user);
   $('#who').classList.toggle('hidden',!user);
-  $('#who').textContent=user?.email||'';
+  $('#who').textContent=user?(myNickname||''):'';
   if (user) closeLogin();
   if (!user) { rabbits=[]; try { await refreshPosts(); } catch(e) { say('讀取討論失敗：'+e.message,true); } return; }
   try { await ensureProfile(); await refreshRabbits(); await Promise.all([refreshPosts(),refreshReminders(),refreshMedical()]); }
   catch(e) { say('讀取資料失敗：'+e.message,true); }
 }
+const randomNick = () => '兔友 ' + String(Math.floor(1000 + Math.random()*9000));
+let myNickname = '';
 async function ensureProfile() {
-  const row=await request(db.from('profiles').select('id').eq('id',user.id).maybeSingle());
-  if (!row) await request(db.from('profiles').insert({id:user.id,nickname:user.email?.split('@')[0]?.slice(0,40)||'兔友'}));
+  const row=await request(db.from('profiles').select('id,nickname').eq('id',user.id).maybeSingle());
+  const emailName=user.email?.split('@')[0]?.slice(0,40)||'';
+  if (!row) {
+    myNickname=randomNick();
+    await request(db.from('profiles').insert({id:user.id,nickname:myNickname}));
+  } else if (emailName && row.nickname===emailName) {
+    // 舊帳號的暱稱是 email 帳號名稱，自動換成隨機暱稱，避免露出信箱
+    myNickname=randomNick();
+    await request(db.from('profiles').update({nickname:myNickname}).eq('id',user.id));
+  } else {
+    myNickname=row.nickname;
+  }
+  $('#nicknameInput').value=myNickname;
+  $('#who').textContent=myNickname;
 }
+$('#nicknameForm').addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const nick=$('#nicknameInput').value.trim();
+  if(!nick) return say('暱稱不能空白',true);
+  if(nick.length>20) return say('暱稱最多 20 個字',true);
+  if(user.email && nick.toLowerCase()===user.email.split('@')[0].toLowerCase()) return say('為了保護隱私，暱稱請不要跟信箱帳號相同',true);
+  try{await request(db.from('profiles').update({nickname:nick}).eq('id',user.id));myNickname=nick;$('#who').textContent=nick;await refreshPosts();say('暱稱已更新');}
+  catch(err){say(err.message,true);}
+});
 $('#authForm').addEventListener('click', (event) => { if(event.target.name==='mode') $('#authForm').dataset.mode=event.target.value; });
 $('#authForm').addEventListener('submit',async(event)=>{
   event.preventDefault(); const f=event.currentTarget, data=new FormData(f), mode=f.dataset.mode||'login';
