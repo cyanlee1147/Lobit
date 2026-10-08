@@ -41,7 +41,7 @@ async function setSession(next, force=false) {
   $('#who').textContent=user?(myNickname||''):'';
   if (user) closeLogin();
   if (!user) { rabbits=[]; try { await refreshPosts(); } catch(e) { say('讀取討論失敗：'+e.message,true); } return; }
-  try { await ensureProfile(); await refreshRabbits(); await Promise.all([refreshPosts(),refreshReminders(),refreshMedical()]); }
+  try { await ensureProfile(); await refreshRabbits(); await Promise.all([refreshPosts(),refreshReminders(),refreshMedical(),refreshClinics()]); }
   catch(e) { say('讀取資料失敗：'+e.message,true); }
 }
 const randomNick = () => '兔友 ' + String(Math.floor(1000 + Math.random()*9000));
@@ -159,14 +159,120 @@ $('#reminderForm').addEventListener('submit',async(e)=>{
   if(!d.get('rabbit_id')) return say('請先新增兔寶',true);
   try {await request(db.from('reminders').insert({owner_id:user.id,rabbit_id:d.get('rabbit_id'),title:String(d.get('title')).trim(),due_at:new Date(String(d.get('due_at'))).toISOString()}));f.reset();f.elements.due_at.value=localTime();await refreshReminders();say('提醒已新增');}catch(err){say(err.message,true);}
 });
-async function refreshMedical() {
-  const rows=await request(db.from('medical_records').select('*, rabbits(name)').order('visited_at',{ascending:false}).limit(100));
-  entry('#medicalList','就診歷史',rows,r=>`<div class="item"><strong>${esc(r.rabbits?.name)} · ${esc(r.reason)}</strong><br><span class="muted">${esc(r.visited_at)} · ${esc(r.clinic||'未填醫院')}</span><br>${esc(r.notes||'')}<div><button class="danger small" data-delete="medical_records" data-id="${r.id}">刪除</button></div></div>`);
+// ---------- 醫療紀錄（含單據照片、常用醫院） ----------
+const PHOTO_BUCKET='medical-photos', MAX_PHOTOS=6;
+let medicalRows=new Map(), lightboxUrls=[], lightboxIndex=0, pendingPhotos=[];
+async function shrinkPhoto(file){
+  // 縮到長邊 1600px 的 JPEG，單據文字仍看得清楚，也省空間
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((ok,fail)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>fail(new Error('無法讀取圖片：'+file.name));i.src=url;});
+    const scale=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');
+    c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    return await new Promise((ok,fail)=>c.toBlob(b=>b?ok(b):fail(new Error('圖片轉檔失敗')),'image/jpeg',0.85));
+  } finally { URL.revokeObjectURL(url); }
 }
+$('#medPhotoInput').addEventListener('change',async(e)=>{
+  const files=[...e.target.files].filter(f=>f.type.startsWith('image/'));e.target.value='';
+  if(pendingPhotos.length+files.length>MAX_PHOTOS) say(`每筆紀錄最多 ${MAX_PHOTOS} 張照片`,true);
+  for(const f of files.slice(0,MAX_PHOTOS-pendingPhotos.length)){
+    try{const blob=await shrinkPhoto(f);pendingPhotos.push({blob,url:URL.createObjectURL(blob)});}catch(err){say(err.message,true);}
+  }
+  renderPendingPhotos();
+});
+function renderPendingPhotos(){
+  $('#medPhotoPreview').innerHTML=pendingPhotos.map((p,i)=>`<button type="button" class="med-thumb" data-unpend="${i}" title="點一下移除"><img src="${p.url}" alt="待上傳照片 ${i+1}"></button>`).join('');
+}
+$('#medPhotoPreview').addEventListener('click',(e)=>{
+  const b=e.target.closest('[data-unpend]');if(!b)return;
+  const [p]=pendingPhotos.splice(Number(b.dataset.unpend),1);URL.revokeObjectURL(p.url);renderPendingPhotos();
+});
+async function refreshMedical() {
+  const rows=await request(db.from('medical_records').select('*, rabbits(name)').order('visited_at',{ascending:false}).order('created_at',{ascending:false}).limit(100));
+  medicalRows=new Map(rows.map(r=>[r.id,r]));
+  const paths=rows.flatMap(r=>r.photos||[]);
+  const urls=new Map();
+  if(paths.length){
+    const signed=await request(db.storage.from(PHOTO_BUCKET).createSignedUrls(paths,3600));
+    for(const x of signed) if(x.signedUrl) urls.set(x.path,x.signedUrl);
+  }
+  entry('#medicalList','就診歷史',rows,r=>{
+    const pics=(r.photos||[]).map(p=>urls.get(p)).filter(Boolean);
+    return `<div class="item med-card"><div class="med-date"><b>${esc(r.visited_at)}</b><span class="pill">${esc(r.rabbits?.name)}</span>${pics.length?`<span class="muted small">📎 ${pics.length} 張單據</span>`:''}</div><strong>${esc(r.reason)}</strong><br><span class="muted">${esc(r.clinic||'未填醫院')}</span>${r.notes?`<div class="med-notes">${esc(r.notes)}</div>`:''}${pics.length?`<div class="med-thumbs" data-gallery="${r.id}">${pics.map((u,i)=>`<button type="button" class="med-thumb" data-pic="${i}"><img src="${esc(u)}" alt="單據 ${i+1}" loading="lazy"></button>`).join('')}</div>`:''}<div><button class="danger small" data-delete="medical_records" data-id="${r.id}">刪除</button></div></div>`;
+  });
+}
+$('#medicalList').addEventListener('click',(e)=>{
+  const pic=e.target.closest('[data-pic]');if(!pic)return;
+  const gallery=pic.closest('[data-gallery]');
+  openLightbox([...gallery.querySelectorAll('img')].map(i=>i.src),Number(pic.dataset.pic));
+});
+function openLightbox(list,i){lightboxUrls=list;lightboxIndex=i;showLightbox();$('#lightbox').hidden=false;}
+function showLightbox(){
+  const lb=$('#lightbox'),u=lightboxUrls[lightboxIndex];
+  lb.querySelector('img').src=u;lb.querySelector('.lb-open').href=u;
+  lb.querySelector('.lb-count').textContent=`${lightboxIndex+1} / ${lightboxUrls.length}`;
+  lb.querySelectorAll('.lb-nav').forEach(b=>b.hidden=lightboxUrls.length<2);
+}
+const stepLightbox=(d)=>{lightboxIndex=(lightboxIndex+d+lightboxUrls.length)%lightboxUrls.length;showLightbox();};
+$('#lightbox').addEventListener('click',(e)=>{
+  if(e.target.closest('.lb-prev'))return stepLightbox(-1);
+  if(e.target.closest('.lb-next'))return stepLightbox(1);
+  if(e.target.closest('.lb-close')||e.target.id==='lightbox')$('#lightbox').hidden=true;
+});
+document.addEventListener('keydown',(e)=>{if($('#lightbox').hidden)return;if(e.key==='Escape')$('#lightbox').hidden=true;if(e.key==='ArrowLeft')stepLightbox(-1);if(e.key==='ArrowRight')stepLightbox(1);});
 $('#medicalForm').addEventListener('submit',async(e)=>{
-  e.preventDefault();const f=e.currentTarget,d=new FormData(f);
+  e.preventDefault();const f=e.currentTarget,d=new FormData(f),btn=$('#medSubmit');
   if(!d.get('rabbit_id')) return say('請先新增兔寶',true);
-  try{await request(db.from('medical_records').insert({owner_id:user.id,rabbit_id:d.get('rabbit_id'),visited_at:d.get('visited_at'),clinic:String(d.get('clinic')).trim()||null,reason:String(d.get('reason')).trim(),notes:String(d.get('notes')).trim()||null}));f.reset();await refreshMedical();say('就診紀錄已儲存');}catch(err){say(err.message,true);}
+  const reason=String(d.get('reason')).trim()||(pendingPhotos.length?'就診單據':'');
+  if(!reason) return say('請填寫就診原因，或附上單據照片',true);
+  const clinic=String(d.get('clinic')).trim();
+  const uploaded=[];
+  btn.disabled=true;btn.textContent=pendingPhotos.length?'上傳照片中…':'儲存中…';
+  try{
+    for(const p of pendingPhotos){
+      const path=`${user.id}/${crypto.randomUUID()}.jpg`;
+      await request(db.storage.from(PHOTO_BUCKET).upload(path,p.blob,{contentType:'image/jpeg'}));
+      uploaded.push(path);
+    }
+    await request(db.from('medical_records').insert({owner_id:user.id,rabbit_id:d.get('rabbit_id'),visited_at:d.get('visited_at'),clinic:clinic||null,reason,notes:String(d.get('notes')).trim()||null,photos:uploaded}));
+    if(clinic) await saveClinic({name:clinic},true);
+    pendingPhotos.forEach(p=>URL.revokeObjectURL(p.url));pendingPhotos=[];renderPendingPhotos();
+    f.reset();await refreshMedical();say('就診紀錄已儲存');
+  }catch(err){
+    if(uploaded.length) await db.storage.from(PHOTO_BUCKET).remove(uploaded);
+    say(err.message,true);
+  }finally{btn.disabled=false;btn.textContent='儲存就診紀錄';}
+});
+async function saveClinic(c,quiet=false){
+  // 名稱相同就不重複新增
+  await request(db.from('clinics').upsert({owner_id:user.id,...c},{onConflict:'owner_id,name',ignoreDuplicates:quiet}));
+  await refreshClinics();
+}
+async function refreshClinics(){
+  const rows=await request(db.from('clinics').select('*').order('created_at',{ascending:true}));
+  $('#clinicOptions').innerHTML=rows.map(c=>`<option value="${esc(c.name)}">`).join('');
+  $('#clinicList').innerHTML=rows.length?rows.map(c=>`<div class="clinic-row"><b>${esc(c.name)}</b>${c.phone?`<a href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}">📞 ${esc(c.phone)}</a>`:''}<a target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address||c.name)}">🗺 地圖</a><button class="danger small" data-clinic-del="${c.id}">刪除</button></div>`).join(''):'<p class="muted">還沒有常用醫院</p>';
+}
+$('#clinicForm').addEventListener('submit',async(e)=>{
+  e.preventDefault();const f=e.currentTarget,d=new FormData(f);
+  try{await saveClinic({name:String(d.get('name')).trim(),phone:String(d.get('phone')).trim()||null,address:String(d.get('address')).trim()||null});f.reset();say('醫院已儲存');}
+  catch(err){say(err.message,true);}
+});
+$('#clinicList').addEventListener('click',async(e)=>{
+  const b=e.target.closest('[data-clinic-del]');if(!b||!confirm('確定刪除這間醫院？（不影響已存的就診紀錄）'))return;
+  try{await request(db.from('clinics').delete().eq('id',b.dataset.clinicDel));await refreshClinics();say('已刪除');}catch(err){say(err.message,true);}
+});
+// 依目前位置搜尋附近的兔科醫院（Google 地圖會從定位點附近開始列）
+$('#nearbyVet').addEventListener('click',()=>{
+  const q=encodeURIComponent('兔子 特寵 動物醫院');
+  const open=(url)=>{location.href=url;};
+  if(!navigator.geolocation){open(`https://www.google.com/maps/search/${q}/`);return;}
+  $('#nearbyNote').textContent='正在取得你的位置…';
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{const {latitude:lat,longitude:lng}=pos.coords;$('#nearbyNote').textContent='';open(`https://www.google.com/maps/search/${q}/@${lat.toFixed(5)},${lng.toFixed(5)},14z`);},
+    ()=>{$('#nearbyNote').textContent='沒有取得定位權限，改用一般搜尋。';open(`https://www.google.com/maps/search/${q}+附近/`);},
+    {enableHighAccuracy:false,timeout:8000,maximumAge:300000});
 });
 async function refreshPosts(){
   const [posts,comments,profiles]=await Promise.all([
@@ -190,7 +296,7 @@ document.addEventListener('click',async(e)=>{
   const done=e.target.closest('[data-done]'),del=e.target.closest('[data-delete]');
   try {
     if(done){await request(db.from('reminders').update({done:done.dataset.state!=='true'}).eq('id',done.dataset.done));await refreshReminders();}
-    if(del){if(!confirm('確定刪除這筆資料？'))return;const table=del.dataset.delete;if(!['posts','care_entries','reminders','medical_records'].includes(table))return;await request(db.from(table).delete().eq('id',del.dataset.id));await ({posts:refreshPosts,care_entries:refreshCare,reminders:refreshReminders,medical_records:refreshMedical})[table]();say('已刪除');}
+    if(del){if(!confirm('確定刪除這筆資料？'))return;const table=del.dataset.delete;if(!['posts','care_entries','reminders','medical_records'].includes(table))return;const photos=table==='medical_records'?(medicalRows.get(del.dataset.id)?.photos||[]):[];await request(db.from(table).delete().eq('id',del.dataset.id));if(photos.length)await db.storage.from(PHOTO_BUCKET).remove(photos);await ({posts:refreshPosts,care_entries:refreshCare,reminders:refreshReminders,medical_records:refreshMedical})[table]();say('已刪除');}
   } catch(err){say(err.message,true);}
 });
 

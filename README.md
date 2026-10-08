@@ -36,3 +36,12 @@ AI 使用 Google Gemini，金鑰放在 Supabase，不放前端。啟用步驟（
 4. 選填 secrets：`BOT_MODEL`（預設 `gemini-3.8-flash`；免費額度不夠時可改 `gemini-3.5-flash-lite`）、`BOT_DAILY_LIMIT`（每人每 24 小時次數，預設 20）、`ALLOWED_ORIGIN`（預設 `https://cyanlee1147.github.io`）。
 
 AI 回覆僅供參考，提示詞已限制不做診斷、不給藥物劑量，並在危險徵兆時要求立即就醫。照片只送到 Gemini 分析，不存進本站資料庫。注意：Gemini 免費方案的內容可能被 Google 用來改善產品，正式上線若在意這點，應改用付費方案並更新隱私權政策。
+
+## 醫療紀錄：單據照片與常用醫院
+
+已部署過的專案，請在 SQL Editor 執行 `supabase-medical.sql` 一次。它會：
+- 在 `medical_records` 加上 `photos` 欄位（存照片在 Storage 的路徑）。
+- 建立 `clinics` 表存常用醫院（名稱、電話、地址），填就診紀錄時可直接選；填了新的醫院名稱也會自動存進去。
+- 建立私人 Storage bucket `medical-photos`，每位使用者只能讀寫自己資料夾的照片；網頁用一小時有效的簽章網址顯示照片。
+
+照片上傳前會在手機上縮到長邊 1600px。刪除就診紀錄時會一併刪除照片。「找我附近的兔科醫院」會用瀏覽器定位，在 Google 地圖以目前位置為中心搜尋。
