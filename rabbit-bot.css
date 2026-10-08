@@ -1,0 +1,69 @@
+/* 兔兔小幫手：浮動 AI 機器人 */
+.rb-bunny{--rb-fur:#CFA27A;--rb-shade:#A57A52;--rb-belly:#F3E2CB;--rb-ear:#F2B5B0;--rb-eye:#2A2620;--rb-line:transparent;display:block}
+.rb-bunny[data-color="white"]{--rb-fur:#FBF8F3;--rb-shade:#E6DED1;--rb-belly:#FFFFFF;--rb-ear:#F6C2BD;--rb-line:#CFC5B4}
+.rb-bunny[data-color="gray"]{--rb-fur:#A3A19D;--rb-shade:#83817D;--rb-belly:#DAD7D1;--rb-ear:#E9AFAA}
+.rb-bunny[data-color="black"]{--rb-fur:#34302C;--rb-shade:#211E1B;--rb-belly:#5E5650;--rb-ear:#C98F8A;--rb-eye:#0E0C0A}
+.rb-bunny[data-color="brown"]{--rb-fur:#CFA27A;--rb-shade:#A57A52;--rb-belly:#F3E2CB}
+
+#rbFab{position:fixed;right:16px;bottom:calc(66px + env(safe-area-inset-bottom));z-index:60;width:66px;height:66px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(0 6px 10px rgba(42,38,32,.25));animation:rb-hop 4.5s ease-in-out infinite;-webkit-tap-highlight-color:transparent}
+#rbFab .rb-bunny{width:66px;height:66px}
+#rbFab:hover{animation-play-state:paused;transform:translateY(-3px) scale(1.04)}
+#rbFab:focus-visible{outline:3px solid var(--moss,#3F5030);outline-offset:3px;border-radius:50%}
+#rbFab .rb-badge{position:absolute;top:2px;left:-6px;background:var(--moss,#3F5030);color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:2px 7px;white-space:nowrap}
+#rbFab.rb-open{animation:none}
+#rbFab.rb-open .rb-badge{display:none}
+@keyframes rb-hop{0%,80%,100%{transform:translateY(0)}86%{transform:translateY(-9px)}92%{transform:translateY(0)}95%{transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){#rbFab{animation:none}}
+
+#rbPanel{position:fixed;right:16px;bottom:calc(140px + env(safe-area-inset-bottom));z-index:61;width:min(370px,calc(100vw - 24px));height:min(580px,calc(100dvh - 170px));background:#fff;border:1px solid var(--line,#E3DCC8);border-radius:20px;box-shadow:0 14px 40px rgba(42,38,32,.22);display:flex;flex-direction:column;overflow:hidden;transform-origin:bottom right;transition:transform .18s ease,opacity .18s ease}
+#rbPanel[hidden]{display:flex;opacity:0;transform:scale(.92) translateY(8px);pointer-events:none;visibility:hidden}
+@media (max-width:420px){#rbPanel{right:12px;left:12px;width:auto}}
+
+.rb-head{display:flex;align-items:center;gap:10px;padding:12px 12px 10px 14px;background:var(--surface-soft,#FBF9F2);border-bottom:1px solid var(--line,#E3DCC8)}
+.rb-head .rb-bunny{width:36px;height:36px;flex-shrink:0}
+.rb-head-text{flex:1;min-width:0}
+.rb-head-text b{display:block;font-size:15px}
+.rb-head-text span{font-size:12px;color:var(--ink-faint,#9C9384)}
+.rb-iconbtn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line,#E3DCC8);background:#fff;color:var(--ink-soft,#6C6355);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+.rb-iconbtn svg{width:18px;height:18px}
+.rb-iconbtn[aria-expanded="true"]{background:var(--moss-soft,#DEE5CE);color:var(--moss,#3F5030);border-color:transparent}
+
+.rb-colors{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line,#E3DCC8);background:#fff;align-items:center}
+.rb-colors[hidden]{display:none}
+.rb-colors small{color:var(--ink-soft,#6C6355);margin-right:auto;font-size:12px}
+.rb-swatch{display:flex;flex-direction:column;align-items:center;gap:2px;border:2px solid transparent;border-radius:12px;background:var(--surface-soft,#FBF9F2);padding:4px 5px 3px;cursor:pointer;font:inherit;font-size:11px;color:var(--ink-soft,#6C6355)}
+.rb-swatch .rb-bunny{width:30px;height:30px}
+.rb-swatch[aria-checked="true"]{border-color:var(--moss,#3F5030);color:var(--moss,#3F5030);font-weight:700}
+
+.rb-modes{display:flex;gap:6px;padding:10px 12px;overflow-x:auto;border-bottom:1px solid var(--line,#E3DCC8)}
+.rb-mode{flex-shrink:0;border:1px solid var(--line,#E3DCC8);background:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;color:var(--ink-soft,#6C6355);cursor:pointer}
+.rb-mode[aria-pressed="true"]{background:var(--moss,#3F5030);border-color:var(--moss,#3F5030);color:#fff}
+
+.rb-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#fff}
+.rb-msg{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.6;word-break:break-word}
+.rb-msg p{margin:0 0 6px}.rb-msg p:last-child{margin:0}
+.rb-msg ul{margin:4px 0 6px;padding-left:18px}
+.rb-bot{align-self:flex-start;background:var(--surface-soft,#FBF9F2);border:1px solid var(--line,#E3DCC8);border-bottom-left-radius:4px}
+.rb-user{align-self:flex-end;background:var(--moss,#3F5030);color:#fff;border-bottom-right-radius:4px}
+.rb-user img{display:block;max-width:180px;max-height:180px;border-radius:10px;margin-bottom:6px;object-fit:cover}
+.rb-err{align-self:center;background:var(--brick-soft,#F5DAD1);color:var(--brick,#B23F27);font-size:13px}
+.rb-typing{display:inline-flex;gap:4px}
+.rb-typing i{width:6px;height:6px;border-radius:50%;background:var(--ink-faint,#9C9384);animation:rb-dot 1s infinite}
+.rb-typing i:nth-child(2){animation-delay:.15s}.rb-typing i:nth-child(3){animation-delay:.3s}
+@keyframes rb-dot{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+.rb-suggest{display:flex;flex-wrap:wrap;gap:6px}
+.rb-suggest button{border:1px dashed var(--clay,#B4763A);background:var(--clay-soft,#F1DFC4);color:#6E4520;border-radius:999px;padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+
+.rb-preview{display:flex;align-items:center;gap:8px;padding:8px 12px 0}
+.rb-preview[hidden]{display:none}
+.rb-preview img{width:52px;height:52px;object-fit:cover;border-radius:10px;border:1px solid var(--line,#E3DCC8)}
+.rb-preview span{font-size:12px;color:var(--ink-soft,#6C6355);flex:1}
+
+.rb-form{display:flex;gap:8px;align-items:flex-end;padding:10px 12px;border-top:1px solid var(--line,#E3DCC8)}
+.rb-form textarea{flex:1;resize:none;border:1px solid var(--line,#E3DCC8);border-radius:14px;padding:9px 12px;font:inherit;font-size:14px;max-height:110px;min-height:40px;line-height:1.45;background:var(--surface-soft,#FBF9F2);color:var(--ink,#2A2620)}
+.rb-form textarea:focus{outline:2px solid var(--moss-soft,#DEE5CE);border-color:var(--moss,#3F5030)}
+.rb-send{background:var(--moss,#3F5030);color:#fff;border-color:transparent}
+.rb-send:disabled{opacity:.45;cursor:default}
+.rb-note{margin:0;padding:0 12px 10px;font-size:11px;color:var(--ink-faint,#9C9384);text-align:center}
+.rb-gate{margin:auto;text-align:center;padding:20px;color:var(--ink-soft,#6C6355);font-size:14px}
+.rb-gate button{margin-top:10px}
