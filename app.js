@@ -126,9 +126,33 @@ $('#careForm').addEventListener('submit',async(e)=>{
   try { await request(db.from('care_entries').insert({owner_id:user.id,rabbit_id:$('#rabbitRecord').value,kind,occurred_at:new Date(String(d.get('occurred_at'))).toISOString(),amount:amount?Number(amount):null,unit:String(d.get('unit')).trim()||null,detail:String(d.get('detail')).trim()||null}));f.reset();$('#careForm [name="occurred_at"]').value=localTime();$('#careKind').dispatchEvent(new Event('change'));await refreshCare();say('紀錄已儲存'); }
   catch(err){say(err.message,true);}
 });
+let reminderRows=new Map();
 async function refreshReminders() {
   const rows=await request(db.from('reminders').select('*, rabbits(name)').order('due_at',{ascending:true}).limit(100));
-  entry('#reminderList','提醒清單',rows,r=>`<div class="item"><strong>${esc(r.title)}</strong> ${r.done?'<span class="pill">已完成</span>':new Date(r.due_at)<new Date()?'<span class="error">已到期</span>':''}<br><span class="muted">${esc(r.rabbits?.name)} · ${esc(when(r.due_at))}</span><div class="actions"><button class="secondary small" data-done="${r.id}" data-state="${r.done}">${r.done?'取消完成':'完成'}</button><button class="danger small" data-delete="reminders" data-id="${r.id}">刪除</button></div></div>`);
+  reminderRows=new Map(rows.map(r=>[r.id,r]));
+  entry('#reminderList','提醒清單',rows,r=>`<div class="item"><strong>${esc(r.title)}</strong> ${r.done?'<span class="pill">已完成</span>':new Date(r.due_at)<new Date()?'<span class="error">已到期</span>':''}<br><span class="muted">${esc(r.rabbits?.name)} · ${esc(when(r.due_at))}</span><div class="actions"><button class="secondary small" data-done="${r.id}" data-state="${r.done}">${r.done?'取消完成':'完成'}</button>${!r.done&&new Date(r.due_at)>new Date()?`<button class="secondary small" data-cal="${r.id}">📅 加到行事曆</button>`:''}<button class="danger small" data-delete="reminders" data-id="${r.id}">刪除</button></div></div>`);
+}
+// 把提醒加進手機行事曆：Android 開 Google 日曆，iPhone 與電腦下載 .ics（系統會跳出「加入行事曆」）
+const icsTime=(d)=>d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+const icsText=(v)=>String(v??'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/([,;])/g,'\\$1');
+function addToCalendar(r){
+  const start=new Date(r.due_at), end=new Date(start.getTime()+30*60000);
+  const title=`🐇 ${r.rabbits?.name||'兔寶'}：${r.title}`;
+  const page=location.origin+location.pathname;
+  if(/Android/i.test(navigator.userAgent)){
+    const q=new URLSearchParams({action:'TEMPLATE',text:title,dates:`${icsTime(start)}/${icsTime(end)}`,details:'來自兔巢 Lobit 的提醒\n'+page});
+    window.open('https://calendar.google.com/calendar/render?'+q.toString(),'_blank','noopener');
+    return;
+  }
+  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Lobit//Reminders//ZH-TW','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',
+    `UID:${r.id}@lobit`,`DTSTAMP:${icsTime(new Date())}`,`DTSTART:${icsTime(start)}`,`DTEND:${icsTime(end)}`,
+    `SUMMARY:${icsText(title)}`,`DESCRIPTION:${icsText('來自兔巢 Lobit 的提醒\n'+page)}`,`URL:${page}`,
+    'BEGIN:VALARM','ACTION:DISPLAY',`DESCRIPTION:${icsText(title)}`,'TRIGGER:-PT10M','END:VALARM',
+    'BEGIN:VALARM','ACTION:DISPLAY',`DESCRIPTION:${icsText(title)}`,'TRIGGER:PT0M','END:VALARM',
+    'END:VEVENT','END:VCALENDAR'].join('\r\n');
+  const url=URL.createObjectURL(new Blob([ics],{type:'text/calendar;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download=`lobit-${start.toISOString().slice(0,10)}.ics`;
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
 }
 $('#reminderForm').addEventListener('submit',async(e)=>{
   e.preventDefault(); const f=e.currentTarget,d=new FormData(f);
@@ -162,6 +186,7 @@ $('#postList').addEventListener('submit',async(e)=>{
   try{await request(db.from('comments').insert({author_id:user.id,post_id:f.dataset.post,content}));await refreshPosts();say('回覆成功');}catch(err){say(err.message,true);}
 });
 document.addEventListener('click',async(e)=>{
+  const cal=e.target.closest('[data-cal]');if(cal){const r=reminderRows.get(cal.dataset.cal);if(r)addToCalendar(r);return;}
   const done=e.target.closest('[data-done]'),del=e.target.closest('[data-delete]');
   try {
     if(done){await request(db.from('reminders').update({done:done.dataset.state!=='true'}).eq('id',done.dataset.done));await refreshReminders();}

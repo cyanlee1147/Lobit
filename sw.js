@@ -1,4 +1,4 @@
-const CACHE = 'lobit-v5';
+const CACHE = 'lobit-v6';
 const SHELL = ['./', './index.html', './app.js', './config.js', './rabbit-bot.js', './rabbit-bot.css', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', event => {
