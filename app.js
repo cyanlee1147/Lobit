@@ -140,13 +140,13 @@ function addToCalendar(r){
   const title=`🐇 ${r.rabbits?.name||'兔寶'}：${r.title}`;
   const page=location.origin+location.pathname;
   if(/Android/i.test(navigator.userAgent)){
-    const q=new URLSearchParams({action:'TEMPLATE',text:title,dates:`${icsTime(start)}/${icsTime(end)}`,details:'來自兔巢 Lobit 的提醒\n'+page});
+    const q=new URLSearchParams({action:'TEMPLATE',text:title,dates:`${icsTime(start)}/${icsTime(end)}`,details:'來自樂兔 Lobit 的提醒\n'+page});
     window.open('https://calendar.google.com/calendar/render?'+q.toString(),'_blank','noopener');
     return;
   }
   const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Lobit//Reminders//ZH-TW','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',
     `UID:${r.id}@lobit`,`DTSTAMP:${icsTime(new Date())}`,`DTSTART:${icsTime(start)}`,`DTEND:${icsTime(end)}`,
-    `SUMMARY:${icsText(title)}`,`DESCRIPTION:${icsText('來自兔巢 Lobit 的提醒\n'+page)}`,`URL:${page}`,
+    `SUMMARY:${icsText(title)}`,`DESCRIPTION:${icsText('來自樂兔 Lobit 的提醒\n'+page)}`,`URL:${page}`,
     'BEGIN:VALARM','ACTION:DISPLAY',`DESCRIPTION:${icsText(title)}`,'TRIGGER:-PT10M','END:VALARM',
     'BEGIN:VALARM','ACTION:DISPLAY',`DESCRIPTION:${icsText(title)}`,'TRIGGER:PT0M','END:VALARM',
     'END:VEVENT','END:VCALENDAR'].join('\r\n');

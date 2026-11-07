@@ -1,6 +1,6 @@
 {
-  "name": "兔巢 TuChao",
-  "short_name": "兔巢",
+  "name": "樂兔 Lobit",
+  "short_name": "樂兔",
   "description": "台灣兔友的社群、每日照護紀錄與就診地圖",
   "start_url": "./index.html",
   "scope": "./",
