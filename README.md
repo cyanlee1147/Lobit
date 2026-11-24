@@ -1,47 +1,27 @@
-# 樂兔 Lobit
+# 樂兔本機免登入版
 
-GitHub Pages 上的兔友社群和照護紀錄。四個區塊：社群、紀錄、提醒、醫療。
+直接使用兔寶、照護、提醒、醫療照片與常用醫院功能。使用 IndexedDB 儲存，不連線至 Supabase，不提供 AI 或公開發文。舊雲端資料未搬移或刪除。
 
-## 啟用
+## 發布
 
-1. 在 Supabase 建立專案，在 SQL Editor 執行 `supabase-schema.sql`。
-2. 啟用 Google 登入：
-   - Google Cloud Console → API 和服務 → 憑證 → 建立「OAuth 用戶端 ID」（網頁應用程式）。
-   - 「已授權的重新導向 URI」填 `https://<你的專案>.supabase.co/auth/v1/callback`。
-   - 把用戶端 ID 和密鑰貼到 Supabase → Authentication → Providers → Google 並啟用。
-   - Email provider 可保留，讓舊的信箱帳號繼續登入。
-3. 在 Authentication → URL Configuration 設定 Site URL `https://cyanlee1147.github.io/Lobit/`，Redirect URLs 加入相同網址及 `https://cyanlee1147.github.io/Lobit/index.html`。
-4. 把 Project URL 和 **publishable key**（舊版稱 anon key）填到 `config.js`。這兩項可放在前端；絕不能放 secret key 或 service_role key。
-5. 將程式推到 GitHub Pages 的發布分支，重新整理網站註冊測試。
+將本資料夾內的 index.html、app.js、local-db.js、sw.js、privacy.html、manifest.json 及兩個 icon PNG 放到原 GitHub Pages 發布目錄並提交。第一次開啟請連線，等待 service worker 完成快取；若仍看到舊版，關閉舊分頁後重新整理。若舊 service worker 持續控制頁面，可在瀏覽器開發工具 Application → Service Workers 更新或解除註冊；不要清除 IndexedDB，以免刪除本機資料。
 
-GitHub Pages 不提供瀏覽器設定 URL 時，應在 Supabase 控制台手動填寫上述正式網址。Email 確認連結會回到此站。若使用本機預覽，可另外將其實際 URL 加入 Redirect URLs。
+## 本機預覽
 
-提醒目前僅在使用者開啟網站時顯示到期狀態，不會在背景寄信或推播。訪客不用登入就能瀏覽社群發文和回覆（作者暱稱顯示為「兔友」）；發文、回覆需要登入。照護、提醒和醫療資料依 RLS 僅對建立者可見。醫療欄位用於記錄獸醫指示，不提供診斷。
+使用 HTTP 靜態伺服器（例如 `python -m http.server 8765`）開啟，避免直接雙擊 HTML。HTTPS 或 localhost 才支援 service worker。
 
-目前舊版頁面的 `window.storage` 資料沒有同步至新資料庫。遷移需要先匯出舊資料並確認帳號對應，勿直接覆蓋或宣稱已搬移。
+## 資料管理
 
-## 訪客模式
+定期匯出 JSON 備份，包含照片。匯入會取代目前全部紀錄並需確認；先匯出舊備份。換瀏覽器、網址或裝置需手動匯入。備份未加密；同一瀏覽器的其他使用者能讀取本機資料。
 
-已部署過的專案，請在 SQL Editor 執行 `supabase-guest-read.sql` 一次，開放訪客讀取社群內容。
+離線可記錄及查看已存照片；外部社群、地圖及行事曆網頁需要網路。網站內到期狀態不等同背景推播。
 
-## 兔兔小幫手（浮動 AI 機器人）
+## 技術說明
 
-右下角的兔子按鈕可以詢問飼養問題、上傳傷口照片估計癒合與回診時間、上傳兔子照片辨識品種。預設是棕色兔子，面板右上角的調色盤可換成白、灰、黑、棕，選擇會記在瀏覽器裡。使用前需要登入。
+local-db.js 提供原 UI 使用的資料介面，所有寫入透過 IndexedDB transaction 持久保存；照片刪除與醫療紀錄刪除在同一交易完成。醫療紀錄成功建立後，後續操作失敗不會再刪除照片。未修改原 Supabase SQL 或權限政策。
 
-AI 使用 Google Gemini，金鑰放在 Supabase，不放前端。啟用步驟（全部可在網頁上完成）：
+## 已執行的驗證
 
-1. 在 SQL Editor 執行 `supabase-bot.sql`（每日次數紀錄表）。
-2. Supabase → Edge Functions → Secrets 新增 `GEMINI_API_KEY`，值是 Google AI Studio（https://aistudio.google.com/apikey）的金鑰。
-3. Edge Functions → Deploy a new function → Via Editor，名稱 `rabbit-bot`，貼上 `supabase/functions/rabbit-bot/index.ts` 後部署，並在函式設定關閉 Verify JWT（函式內部會自己用 `auth.getUser` 驗證登入）。
-4. 選填 secrets：`BOT_MODEL`（預設 `gemini-3.8-flash`；免費額度不夠時可改 `gemini-3.5-flash-lite`）、`BOT_DAILY_LIMIT`（每人每 24 小時次數，預設 20）、`ALLOWED_ORIGIN`（預設 `https://cyanlee1147.github.io`）。
+已透過本機瀏覽器測試免登入新增兔寶、照護紀錄重新載入、提醒完成、就診保存、照片重新讀取、備份 UI 匯出與匯入；停止本機伺服器後仍可重新載入及新增紀錄。另 9 項資料層檢查通過，包括並行寫入、負數拒絕、兔寶關聯、提醒狀態、醫院去重、無效備份拒絕、資料及照片還原、紀錄照片同步刪除。
 
-AI 回覆僅供參考，提示詞已限制不做診斷、不給藥物劑量，並在危險徵兆時要求立即就醫。照片只送到 Gemini 分析，不存進本站資料庫。注意：Gemini 免費方案的內容可能被 Google 用來改善產品，正式上線若在意這點，應改用付費方案並更新隱私權政策。
-
-## 醫療紀錄：單據照片與常用醫院
-
-已部署過的專案，請在 SQL Editor 執行 `supabase-medical.sql` 一次。它會：
-- 在 `medical_records` 加上 `photos` 欄位（存照片在 Storage 的路徑）。
-- 建立 `clinics` 表存常用醫院（名稱、電話、地址），填就診紀錄時可直接選；填了新的醫院名稱也會自動存進去。
-- 建立私人 Storage bucket `medical-photos`，每位使用者只能讀寫自己資料夾的照片；網頁用一小時有效的簽章網址顯示照片。
-
-照片上傳前會在手機上縮到長邊 1600px。刪除就診紀錄時會一併刪除照片。「找我附近的兔科醫院」會用瀏覽器定位，在 Google 地圖以目前位置為中心搜尋。
+尚未執行 iPhone Safari 與 Android 實機測試；正式網站仍需發布這些檔案後確認。
