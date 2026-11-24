@@ -10,7 +10,7 @@
   ];
   const MODES = {
     chat: { label: '飼養問答', hint: '問我兔子的飲食、照顧、行為問題', suggest: ['兔子一天要吃多少牧草？', '兔子不吃東西怎麼辦？', '怎麼幫兔子剪指甲？'] },
-    wound: { label: '傷口評估', hint: '上傳傷口照片，並說明受傷幾天、是否已看過獸醫', suggest: ['上傳傷口照片', '傷口受傷 3 天了，有在擦藥'] },
+    wound: { label: '傷口觀察', hint: '上傳傷口照片，並說明受傷幾天、是否已看過獸醫', suggest: ['上傳傷口照片', '兔子的傷口受傷 3 天了，有在擦藥'] },
     breed: { label: '品種辨識', hint: '上傳兔子照片，我來猜品種並說明特色與飼養重點', suggest: ['上傳兔子照片'] },
   };
   const STORE = 'lobit-bot-color';
@@ -77,7 +77,7 @@
     <div class="rb-modes" role="group" aria-label="問題類型">
       ${Object.entries(MODES).map(([k, m]) => `<button type="button" class="rb-mode" data-mode="${k}" aria-pressed="${k === mode}">${m.label}</button>`).join('')}
     </div>
-    <div class="rb-log" id="rbLog" aria-live="polite"></div>
+    <p id="rbQuota" class="rb-note" role="status">每個瀏覽器累計可成功提問 3 次，剩餘次數待確認</p><div class="rb-log" id="rbLog" aria-live="polite"></div>
     <div class="rb-preview" id="rbPreview" hidden><img alt="待送出的照片"><span>照片已附上</span><button type="button" class="rb-iconbtn" id="rbClearImg" aria-label="移除照片">${icon.close}</button></div>
     <form class="rb-form" id="rbForm">
       <button type="button" class="rb-iconbtn" id="rbAttach" aria-label="上傳照片">${icon.camera}</button>
@@ -85,7 +85,7 @@
       <textarea id="rbInput" rows="1" maxlength="1500" placeholder="輸入問題…"></textarea>
       <button type="submit" class="rb-iconbtn rb-send" id="rbSend" aria-label="送出">${icon.send}</button>
     </form>
-    <p class="rb-note">緊急狀況（大量出血、不吃不拉超過 12 小時、呼吸困難）請立即就醫</p>`;
+    <p class="rb-note">問題與照片會傳送至 Gemini；只接受兔子相關問題，無關或服務失敗不扣次數。AI 不能取代獸醫。</p>`;
 
   document.body.append(panel, fab);
   const $ = (s) => panel.querySelector(s);
@@ -111,7 +111,7 @@
     fab.classList.toggle('rb-open', open);
     fab.setAttribute('aria-expanded', String(open));
     fab.setAttribute('aria-label', open ? '關閉兔兔小幫手' : '開啟兔兔小幫手');
-    if (open) { if (!log.childElementCount) greet(); setTimeout(() => input.focus(), 50); }
+    if (open) { void refreshQuota(); if (!log.childElementCount) greet(); setTimeout(() => input.focus(), 50); }
   }
   fab.addEventListener('click', () => toggle());
   $('#rbClose').addEventListener('click', () => toggle(false));
@@ -162,7 +162,7 @@
     log.scrollTop = log.scrollHeight;
   }
   function greet() {
-    bubble('rb-bot', md('嗨！我是兔兔小幫手 🐇\n我可以：\n- 回答兔子飼養問題\n- 看傷口照片，估計大概的癒合時間與回診時機\n- 看兔子照片猜品種，介紹特色和飼養重點\n右上角的調色盤可以換我的顏色喔！'));
+    bubble('rb-bot', md('嗨！我是兔兔小幫手 🐇\n我可以：\n- 回答兔子飼養問題\n- 觀察兔子傷口照片，整理就診時可詢問的問題\n- 看兔子照片猜品種，介紹特色和飼養重點\n右上角的調色盤可以換我的顏色喔！'));
     addSuggestions();
   }
 
@@ -202,14 +202,8 @@
     if (busy) return;
     const text = input.value.trim();
     if (!text && !pendingImage) return;
-    const client = typeof db !== 'undefined' ? db : null;
-    if (!client) return bubble('rb-err', '網站尚未連上資料庫，暫時無法使用小幫手。');
-    const { data: { session } } = await client.auth.getSession();
-    if (!session) {
-      const el = bubble('rb-bot', md('小幫手需要先登入才能使用（避免被濫用）。登入後就能問我囉！') + '<button type="button" class="primary" data-login style="margin-top:6px">登入</button>');
-      el.querySelector('[data-login]').addEventListener('click', () => toggle(false));
-      return;
-    }
+    if (!/兔|\brabbits?\b|\bbunn(?:y|ies)\b/i.test(text)) return bubble('rb-err', '請在問題中寫明兔子或兔寶；只接受與兔子相關的問題，照片也需要搭配文字說明。');
+    if(remaining===0)return bubble('rb-err','此瀏覽器累計 3 次提問已用完。');
     log.querySelectorAll('.rb-suggest').forEach((el) => el.remove());
     const image = pendingImage;
     if (image && mode !== 'wound' && /傷|流血|受傷|破皮|結痂/.test(text)) setMode('wound', true);
@@ -220,25 +214,51 @@
     busy = true; $('#rbSend').disabled = true;
     const typing = bubble('rb-bot', '<span class="rb-typing"><i></i><i></i><i></i></span>');
     try {
-      // 只送最近幾輪；舊照片不重送，以文字標記代替
-      const recent = history.slice(-MAX_TURNS);
-      const lastImg = recent.map((m) => !!m.image).lastIndexOf(true);
-      const messages = recent.map((m, i) => ({ role: m.role, text: m.text || (m.image && i !== lastImg ? '（先前上傳的照片）' : ''), image: i === lastImg ? m.image : null }));
-      const { data, error } = await client.functions.invoke('rabbit-bot', { body: { mode, messages } });
-      if (error) {
-        let msg = error.message;
-        try { const body = await error.context?.json?.(); if (body?.error) msg = body.error; } catch { /* 保留原訊息 */ }
-        throw new Error(msg);
-      }
+      const data = await callBot({mode,text,image:image?{data:image.data,media_type:image.media_type}:null});
+      updateQuota(data.remaining);
       typing.remove();
       bubble('rb-bot', md(data.reply));
       history.push({ role: 'assistant', text: data.reply });
     } catch (err) {
       typing.remove();
       history.pop();
+      if(Number.isInteger(err.remaining))updateQuota(err.remaining);
+      input.value=text;pendingImage=image;if(image){$('#rbPreview img').src=image.url;$('#rbPreview').hidden=false;}
       bubble('rb-err', '小幫手暫時沒辦法回答：' + esc(err.message));
-    } finally { busy = false; $('#rbSend').disabled = false; }
+    } finally { busy = false; $('#rbSend').disabled = remaining===0; }
   });
 
+  let remaining=null;
+  const DEVICE_KEY='lobit-bot-device-v1';
+  function deviceToken(){
+    let token=localStorage.getItem(DEVICE_KEY);
+    if(!/^[0-9a-f]{64}$/.test(token||'')){
+      token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(v=>v.toString(16).padStart(2,'0')).join('');
+      localStorage.setItem(DEVICE_KEY,token);
+      if(localStorage.getItem(DEVICE_KEY)!==token)throw new Error('請允許此瀏覽器儲存資料');
+    }
+    return token;
+  }
+  function updateQuota(value){
+    if(!Number.isInteger(value)||value<0||value>3)return;
+    remaining=value;
+    $('#rbQuota').textContent=`此瀏覽器累計可問 3 次，目前剩餘 ${remaining} 次`;
+    $('#rbSend').disabled=busy||remaining===0;
+  }
+  async function callBot(payload){
+    const config=window.LOBIT_CONFIG||{};
+    if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(config.url||''))throw new Error('AI 後端尚未設定');
+    const response=await fetch(config.url+'/functions/v1/rabbit-bot',{
+      method:'POST',headers:{'content-type':'application/json',...(config.publishableKey?{apikey:config.publishableKey}:{})},
+      body:JSON.stringify({...payload,device_token:deviceToken()}),signal:AbortSignal.timeout(65000)
+    });
+    let data;try{data=await response.json();}catch{throw new Error('AI 後端未回傳有效資料');}
+    if(!response.ok){const error=new Error(data.error||'AI 暫時無法連線');error.remaining=data.remaining;throw error;}
+    return data;
+  }
+  async function refreshQuota(){
+    try{const result=await callBot({action:'status'});updateQuota(result.remaining);}
+    catch{ $('#rbQuota').textContent='AI 尚未連線，剩餘次數待確認；請確認後端已恢復並更新。'; }
+  }
   setMode('chat', true);
 })();
